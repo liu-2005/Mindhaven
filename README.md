@@ -1,5 +1,8 @@
-# Vue 3 + Vite
+# 心晴情绪 AI 助手
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+项目代码位于 `心情情绪AI助手` 目录，采用前后端分离结构：
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+- `frontend`：Vue 3 + Vite + Element Plus
+- `backend`：Spring Boot + Maven + MySQL
+
+详细启动方式请查看项目目录中的说明文档。
