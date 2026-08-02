@@ -25,6 +25,9 @@ target/
 *.ear
 hs_err_pid*
 
+# Local file storage (backend)
+backend/storage/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,0 +1,67 @@
+package com.mindhaven.controller;
+
+import java.util.Map;
+
+import com.mindhaven.common.ApiResponse;
+import com.mindhaven.common.BizException;
+import com.mindhaven.common.ErrorCode;
+import com.mindhaven.entity.FileObject;
+import com.mindhaven.security.AuthContextHolder;
+import com.mindhaven.service.FileService;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+@RestController
+@RequestMapping("/api/v1/files")
+public class FileController {
+
+    private final FileService fileService;
+
+    public FileController(FileService fileService) {
+        this.fileService = fileService;
+    }
+
+    @PostMapping
+    public ApiResponse<Map<String, Object>> upload(@RequestParam("file") MultipartFile file,
+                                                   @RequestParam(required = false) String businessType,
+                                                   @RequestParam(required = false) Long businessId,
+                                                   @RequestParam(required = false) String businessField) {
+        FileObject saved = fileService.upload(AuthContextHolder.userId(), file, businessType, businessId, businessField);
+        String url = "/api/v1/files/" + saved.getId();
+        return ApiResponse.success(Map.of("fileId", saved.getId(), "filePath", url,
+                "url", url, "originalName", saved.getOriginalName()));
+    }
+
+    @GetMapping("/{fileId}")
+    public ResponseEntity<byte[]> download(@PathVariable Long fileId) {
+        FileObject file = fileService.get(fileId);
+        byte[] bytes = fileService.readBytes(file);
+        String contentType = file.getContentType();
+        if (contentType == null) {
+            contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "inline")
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(bytes);
+    }
+
+    @DeleteMapping("/{fileId}")
+    public ApiResponse<Void> delete(@PathVariable Long fileId) {
+        FileObject file = fileService.get(fileId);
+        Long owner = file.getOwnerUserId();
+        if (owner != null && !owner.equals(AuthContextHolder.userId())) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+        fileService.delete(fileId);
+        return ApiResponse.success(null);
+    }
+}
