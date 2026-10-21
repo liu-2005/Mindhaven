@@ -9,6 +9,10 @@ import org.springframework.data.repository.query.Param;
 
 public interface RiskEventRepository extends JpaRepository<RiskEvent, Long> {
 
+    java.util.Optional<RiskEvent> findFirstBySourceTypeAndSourceIdOrderByIdDesc(String sourceType, Long sourceId);
+
+    long countByUserId(Long userId);
+
     @Query("select r from RiskEvent r " +
             "where (:status is null or r.status = :status) " +
             "and (:level is null or r.riskLevel = :level) " +

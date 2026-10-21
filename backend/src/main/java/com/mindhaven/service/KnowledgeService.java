@@ -1,5 +1,6 @@
 package com.mindhaven.service;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,11 +13,13 @@ import com.mindhaven.dto.ArticleRequest;
 import com.mindhaven.dto.CategoryDto;
 import com.mindhaven.entity.Article;
 import com.mindhaven.entity.ArticleTag;
+import com.mindhaven.entity.ArticleViewEvent;
 import com.mindhaven.entity.FileObject;
 import com.mindhaven.entity.KnowledgeCategory;
 import com.mindhaven.entity.Tag;
 import com.mindhaven.repository.ArticleRepository;
 import com.mindhaven.repository.ArticleTagRepository;
+import com.mindhaven.repository.ArticleViewEventRepository;
 import com.mindhaven.repository.FileObjectRepository;
 import com.mindhaven.repository.KnowledgeCategoryRepository;
 import com.mindhaven.repository.TagRepository;
@@ -45,6 +48,7 @@ public class KnowledgeService {
     private final ArticleTagRepository articleTagRepository;
     private final FileObjectRepository fileObjectRepository;
     private final UserRepository userRepository;
+    private final ArticleViewEventRepository viewEventRepository;
     private final AuditService auditService;
 
     public KnowledgeService(ArticleRepository articleRepository,
@@ -53,6 +57,7 @@ public class KnowledgeService {
                             ArticleTagRepository articleTagRepository,
                             FileObjectRepository fileObjectRepository,
                             UserRepository userRepository,
+                            ArticleViewEventRepository viewEventRepository,
                             AuditService auditService) {
         this.articleRepository = articleRepository;
         this.categoryRepository = categoryRepository;
@@ -60,6 +65,7 @@ public class KnowledgeService {
         this.articleTagRepository = articleTagRepository;
         this.fileObjectRepository = fileObjectRepository;
         this.userRepository = userRepository;
+        this.viewEventRepository = viewEventRepository;
         this.auditService = auditService;
     }
 
@@ -95,7 +101,13 @@ public class KnowledgeService {
             throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
         }
         article.setViewCount((article.getViewCount() == null ? 0 : article.getViewCount()) + 1);
-        return articleRepository.save(article);
+        Article saved = articleRepository.save(article);
+
+        ArticleViewEvent event = new ArticleViewEvent();
+        event.setArticleId(article.getId());
+        event.setViewDate(LocalDate.now());
+        viewEventRepository.save(event);
+        return saved;
     }
 
     public Page<Article> adminPage(Long categoryId, String status, String title, int page, int size) {

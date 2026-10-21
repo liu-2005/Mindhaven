@@ -122,12 +122,12 @@
         </div>
         <div class="emotion-status-item">
           <div class="emotion-status-label">睡眠质量</div>
-          <el-tag v-if="currentRow.sleepQuality != null && currentRow.sleepQuality !== ''" type="primary" size="small">{{ currentRow.sleepQuality }}/10</el-tag>
+          <el-tag v-if="currentRow.sleepQuality != null && currentRow.sleepQuality !== ''" type="primary" size="small">{{ currentRow.sleepQuality }}/5</el-tag>
           <span v-else class="empty-text">-</span>
         </div>
         <div class="emotion-status-item">
           <div class="emotion-status-label">压力水平</div>
-          <el-tag v-if="currentRow.stressLevel != null && currentRow.stressLevel !== ''" type="warning" size="small">{{ currentRow.stressLevel }}/10</el-tag>
+          <el-tag v-if="currentRow.stressLevel != null && currentRow.stressLevel !== ''" type="warning" size="small">{{ currentRow.stressLevel }}/5</el-tag>
           <span v-else class="empty-text">-</span>
         </div>
       </div>
@@ -365,8 +365,8 @@ const getLifeIndicators = (row) => {
   const items = []
   const sq = row.sleepQuality
   const sl = row.stressLevel
-  if (sq !== null && sq !== undefined && sq !== "") items.push("睡眠 " + sq + "/10")
-  if (sl !== null && sl !== undefined && sl !== "") items.push("压力 " + sl + "/10")
+  if (sq !== null && sq !== undefined && sq !== "") items.push("睡眠 " + sq + "/5")
+  if (sl !== null && sl !== undefined && sl !== "") items.push("压力 " + sl + "/5")
   return items
 }
 

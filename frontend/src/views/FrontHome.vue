@@ -47,18 +47,18 @@
           </div>
           <div class="hero-stats">
             <div class="stat-item">
-              <span class="stat-num">10w+</span>
-              <span class="stat-label">用户陪伴</span>
+              <span class="stat-num">日记</span>
+              <span class="stat-label">记录心情</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <span class="stat-num">500+</span>
-              <span class="stat-label">精选文章</span>
+              <span class="stat-num">科普</span>
+              <span class="stat-label">认识情绪</span>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <span class="stat-num">24h</span>
-              <span class="stat-label">在线倾听</span>
+              <span class="stat-num">AI</span>
+              <span class="stat-label">温暖陪伴</span>
             </div>
           </div>
         </div>
@@ -106,7 +106,7 @@
           <p>遇到困扰却又不想打扰别人？AI 咨询 24 小时在线，听你说、陪你聊，帮你梳理情绪脉络。</p>
           <ul class="consult-list">
             <li>· 实时对话，情绪识别与共情回应</li>
-            <li>· 隐私安全，对话内容加密存储</li>
+            <li>· 按账号管理个人会话，支持删除历史</li>
             <li>· 智能建议，给出贴心的小贴士</li>
           </ul>
           <el-button type="primary" round @click="goConsultation">立即体验</el-button>
@@ -269,7 +269,7 @@ const features = [
   { title: '情绪日记', desc: '每天写几句，记录心情，看见自己的变化。', icon: EditPen, color: '#14b8a6' },
   { title: 'AI 情绪分析', desc: 'AI 读懂你的情绪，给出贴心的建议。', icon: Sunny, color: '#f97316' },
   { title: '知识文章', desc: '靠谱的心理学内容，想了解的这里都有。', icon: Document, color: '#8b5cf6' },
-  { title: '咨询陪伴', desc: '需要的时候，和专业咨询师聊聊。', icon: ChatDotRound, color: '#ec4899' },
+  { title: 'AI陪伴', desc: '和AI梳理感受，获得日常陪伴。', icon: ChatDotRound, color: '#ec4899' },
 ]
 
 const moods = [

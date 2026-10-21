@@ -37,14 +37,15 @@ public class UserService {
     @Transactional
     public User register(String username, String email, String password, String nickname, String phone,
                          String privacyConsentVersion) {
+        username = username == null ? "" : username.trim();
         if (!StringUtils.hasText(username) || username.length() < 3 || username.length() > 50) {
             throw new BizException(ErrorCode.VALIDATION_ERROR, "用户名长度需在 3-50 之间");
         }
-        if (password == null || password.length() < 6) {
-            throw new BizException(ErrorCode.VALIDATION_ERROR, "密码长度至少 6 位");
+        if (password == null || password.length() < 6 || password.length() > 64 || password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+            throw new BizException(ErrorCode.VALIDATION_ERROR, "密码需为6–64位，UTF-8编码不超过72字节");
         }
         username = username.trim();
-        email = email == null ? "" : email.trim().toLowerCase();
+        email = !StringUtils.hasText(email) ? null : email.trim().toLowerCase(java.util.Locale.ROOT);
 
         if (userRepository.existsByUsername(username)) {
             throw new BizException(ErrorCode.RESOURCE_CONFLICT, "用户名已存在");

@@ -70,7 +70,13 @@ const routes = [
         path: 'consultations',
         name: 'Consultations',
         component: () => import('@/views/Consultations.vue'),
-        meta: { title: '咨询记录', icon: 'ChatDotRound' },
+        meta: { title: '我的咨询记录', icon: 'ChatDotRound' },
+      },
+      {
+        path: 'risk-events',
+        name: 'RiskEvents',
+        component: () => import('@/views/RiskEvents.vue'),
+        meta: { title: '风险工作台', icon: 'ChatDotRound', permission: 'risk:read' },
       },
       {
         path: 'emotional',

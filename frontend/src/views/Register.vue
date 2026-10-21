@@ -56,6 +56,10 @@
         </el-input>
       </el-form-item>
       <el-form-item>
+        <el-checkbox v-model="privacyAccepted">我已满18岁，并已阅读</el-checkbox>
+        <el-button link type="primary" @click="privacyVisible = true">隐私与AI使用说明</el-button>
+      </el-form-item>
+      <el-form-item>
         <el-button type="primary" size="large" class="submit-btn" :loading="loading" @click="handleRegister">注 册</el-button>
       </el-form-item>
     </el-form>
@@ -63,6 +67,13 @@
       已有账户？<router-link to="/auth/login">立即登录</router-link>
     </p>
   </AuthLayout>
+  <el-dialog v-model="privacyVisible" title="隐私与AI使用说明" width="min(560px, 92vw)">
+    <p>本产品面向成年用户，用于记录心情、情绪陪伴和心理健康科普，不提供医学诊断、治疗或紧急救援服务。</p>
+    <p>日记、聊天与情绪分析保存在本服务数据库。使用AI咨询时，会将当前问题和当前会话最近的必要上下文发送给DeepSeek生成回复；情绪评分会单独分析近期用户发言。请勿输入身份证、密码或详细住址等敏感信息。</p>
+    <p>你可以删除自己的日记和会话。会话删除会清理关联消息与评分；为处理风险而产生的最小化事件与操作审计可能保留。退出登录不会删除内容。</p>
+    <p>本地体验版本尚未提供自助账号注销、数据导出和自动到期清理；不应将它作为长期保存敏感信息的唯一渠道。</p>
+    <p>如果遇到即时危险，请优先联系可信任的人和当地紧急服务。AI情绪分仅供自我觉察，不是临床量表。</p>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -76,6 +87,8 @@ import { register } from '@/api/user'
 const router = useRouter()
 const registerFormRef = ref(null)
 const loading = ref(false)
+const privacyAccepted = ref(false)
+const privacyVisible = ref(false)
 
 const registerForm = reactive({
   username: '',
@@ -120,15 +133,15 @@ const registerRules = {
 const goHome = () => router.push('/')
 
 const handleRegister = () => {
+  if (!privacyAccepted.value) { ElMessage.warning('请先确认已满18岁，并阅读隐私与AI使用说明'); return }
   registerFormRef.value.validate(async (valid) => {
     if (!valid) return
     loading.value = true
     try {
       const { confirmPassword, captcha, ...payload } = registerForm
-      const res = await register(payload)
-      console.log('[前台注册] 接口返回：', res)
+      await register({ ...payload, privacyConsentVersion: '2026-10-21' })
       ElMessage.success('注册成功')
-      // 前台界面待开发，暂不跳转
+      router.push('/auth/login')
     } catch (err) {
       console.error('[前台注册] 失败：', err)
     } finally {
@@ -137,3 +150,6 @@ const handleRegister = () => {
   })
 }
 </script>
+<style scoped>
+:deep(.el-dialog__body p) { margin: 0 0 12px; line-height: 1.75; }
+</style>

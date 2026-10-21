@@ -44,7 +44,11 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, markRaw, h, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+echarts.use([LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent, CanvasRenderer])
 import { User, Sunny, ChatDotRound } from '@element-plus/icons-vue'
 import PageHeader from '@/components/PageHeader.vue'
 import request from '@/utils/request'

@@ -59,7 +59,7 @@
         <!-- 情绪花园 -->
         <div class="mood-garden" :key="emotionData.key">
           <h4 class="sidebar-title">情绪花园</h4>
-          <div v-if="emotionData.score > 0" class="emotion-score">
+          <div v-if="emotionData.score !== null && !emotionLoading" class="emotion-score">
             <svg class="es-ring" viewBox="0 0 120 120">
               <circle class="es-bg" cx="60" cy="60" r="50" />
               <circle class="es-fg" cx="60" cy="60" r="50" :stroke-dasharray="ringDash" stroke-dashoffset="0" />
@@ -70,6 +70,8 @@
             </div>
           </div>
           <p class="es-label" :style="{ color: scoreColor }">{{ scoreText }}</p>
+          <p class="emotion-note">依据当前会话中的用户表达评估，越高表示情绪越积极稳定；仅供自我觉察，不是诊断。</p>
+          <p v-if="emotionData.riskDescription && !emotionLoading" class="emotion-reason">{{ emotionData.riskDescription }}</p>
           <div v-if="['CRISIS', 'WARNING'].includes(emotionData.riskLevel)" class="risk-alert" role="alert">
             <div class="risk-alert-title">⚠️ 风险提示</div>
             <p class="risk-alert-description">
@@ -120,8 +122,21 @@
                   <span class="stat-chip"><el-icon><Clock /></el-icon>{{ formatDuration(s.duration) }}</span>
                 </span>
               </div>
+              <el-button
+                class="history-delete"
+                text
+                circle
+                type="danger"
+                :icon="Delete"
+                :loading="deletingSessionId === s.id"
+                :disabled="sending || deletingSessionId !== null"
+                :aria-label="`删除会话：${s.title}`"
+                title="删除会话"
+                @click.stop="handleDeleteSession(s)"
+              />
             </div>
           </div>
+          <p v-if="!sessions.length" class="history-empty">暂无会话，点击“新建”开始聊天</p>
         </div>
       </aside>
 
@@ -137,6 +152,7 @@
           </el-button>
         </div>
         <div ref="chatBoxRef" class="chat-box">
+          <el-empty v-if="!currentSessionId" description="新建一个会话，开始和小晴聊聊吧" />
           <div v-for="msg in messages" :key="msg.id" class="msg-row" :class="msg.role">
             <div class="msg-avatar" :class="msg.role">
               <img v-if="msg.role === 'ai'" src="@/assets/images/robot.svg" class="msg-avatar-img" />
@@ -146,8 +162,8 @@
           </div>
         </div>
         <div class="chat-input">
-          <el-input v-model="inputText" type="textarea" :rows="3" placeholder="说点什么吧，小晴在听..." resize="none" @keydown.enter.exact.prevent="sendMessage" />
-          <el-button type="primary" :loading="sending" @click="sendMessage">
+          <el-input v-model="inputText" type="textarea" :rows="3" maxlength="4000" show-word-limit :disabled="!currentSessionId || deletingSessionId !== null" placeholder="说点什么吧，小晴在听..." resize="none" @keydown.enter.exact.prevent="sendMessage" />
+          <el-button type="primary" :loading="sending" :disabled="!currentSessionId || deletingSessionId !== null" @click="sendMessage">
             <el-icon><Promotion /></el-icon>发送
           </el-button>
         </div>
@@ -159,10 +175,10 @@
 <script setup>
 import { ref, reactive, computed, markRaw, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ChatLineRound, Avatar, Plus, Promotion, Sunny, EditPen, Lightning, Clock } from '@element-plus/icons-vue'
+import { ChatLineRound, Avatar, Plus, Promotion, Sunny, EditPen, Lightning, Clock, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { logout } from '@/api/user'
-import { createSession, getSessionPage, getSessionMessages, getSessionEmotion, streamChat } from '@/api/consultation'
+import { createSession, getSessionPage, getSessionMessages, getSessionEmotion, streamChat, deleteSession } from '@/api/consultation'
 
 const router = useRouter()
 
@@ -181,7 +197,9 @@ const moodList = ref([
 ])
 const moodMap = { '平静': 0, '放松': 0, '安心': 0, '开心': 1, '快乐': 1, '焦虑': 2, '紧张': 2, '低落': 3, '难过': 3, '悲伤': 3 }
 
-const emotionData = ref({ score: 0, suggestion: '', improvements: [], label: '', riskLevel: 'NORMAL', riskDescription: '', key: 0 })
+const emotionData = ref({ score: null, suggestion: '', improvements: [], label: '', riskLevel: 'NORMAL', riskDescription: '', status: 'PENDING', key: 0 })
+const emotionLoading = ref(false)
+let emotionRequestId = 0
 
 const ringDash = computed(() => {
   const c = 2 * Math.PI * 50
@@ -189,22 +207,25 @@ const ringDash = computed(() => {
 })
 const scoreColor = computed(() => {
   const s = emotionData.value.score
+  if (s === null || emotionLoading.value) return '#64748b'
   if (s >= 80) return '#f59e0b'
   if (s >= 60) return '#10b981'
   if (s >= 40) return '#8b5cf6'
   return '#f472b6'
 })
 const scoreText = computed(() => {
+  if (emotionLoading.value) return '正在根据对话分析…'
   const s = emotionData.value.score
+  if (s === null) return emotionData.value.status === 'FAILED' ? '本轮暂未评分' : '聊一聊后生成评分'
   if (s >= 80) return '心情明媚'
   if (s >= 60) return '状态不错'
-  if (s >= 40) return '平和'
+  if (s >= 40) return '情绪有些起伏'
   return '需要照顾'
 })
 
 function setEmotion(data) {
-  const rawScore = Number(data.emotionScore ?? 0)
-  const score = Math.min(100, Math.max(0, Number.isFinite(rawScore) ? rawScore : 0))
+  const rawScore = data.emotionScore == null ? null : Number(data.emotionScore)
+  const score = rawScore !== null && Number.isFinite(rawScore) ? Math.min(100, Math.max(0, rawScore)) : null
   emotionData.value = {
     score,
     suggestion: data.suggestion || '',
@@ -212,17 +233,24 @@ function setEmotion(data) {
     label: data.label || '',
     riskLevel: data.riskLevel || 'NORMAL',
     riskDescription: data.riskDescription || '',
+    status: data.analysisStatus || 'SUCCEEDED',
     key: emotionData.value.key + 1,
   }
 }
 function resetEmotion() {
-  emotionData.value = { score: 0, suggestion: '', improvements: [], label: '', riskLevel: 'NORMAL', riskDescription: '', key: emotionData.value.key + 1 }
+  emotionRequestId++
+  emotionLoading.value = false
+  moodList.value.forEach(m => (m.count = 0))
+  emotionData.value = { score: null, suggestion: '', improvements: [], label: '', riskLevel: 'NORMAL', riskDescription: '', status: 'PENDING', key: emotionData.value.key + 1 }
 }
 
 async function loadEmotion(sessionId) {
+  const requestId = ++emotionRequestId
+  emotionLoading.value = true
   try {
     const res = await getSessionEmotion(sessionId)
     const data = res.data || res
+    if (currentSessionId.value !== sessionId || requestId !== emotionRequestId) return
     setEmotion(data)
     moodList.value.forEach(m => (m.count = 0))
     const keywords = data.keywords || []
@@ -232,12 +260,18 @@ async function loadEmotion(sessionId) {
     })
   } catch (err) {
     console.error('[情绪分析] 失败:', err)
+    if (currentSessionId.value === sessionId && requestId === emotionRequestId) {
+      setEmotion({ analysisStatus: 'FAILED', suggestion: '暂时无法加载情绪分析，请稍后重试。' })
+    }
+  } finally {
+    if (currentSessionId.value === sessionId && requestId === emotionRequestId) emotionLoading.value = false
   }
 }
 
 // ======== 会话管理 ========
 const sessions = ref([])
 const currentSessionId = ref(null)
+const deletingSessionId = ref(null)
 const currentAiName = computed(() => {
   const s = sessions.value.find(x => x.id === currentSessionId.value)
   return s?.aiName || 'AI助手'
@@ -286,6 +320,7 @@ async function selectSession(id) {
   resetEmotion()
   try {
     const res = await getSessionMessages(id, { page: 1, size: 100 })
+    if (currentSessionId.value !== id) return
     const data = res.data || res
     const list = data.items || []
     messages.value = list.map(m => ({
@@ -296,7 +331,38 @@ async function selectSession(id) {
   } catch (err) {
     console.error('加载消息失败:', err)
   }
-  loadEmotion(id)
+  if (currentSessionId.value === id) loadEmotion(id)
+}
+
+async function handleDeleteSession(session) {
+  if (sending.value || deletingSessionId.value !== null) return
+  try {
+    await ElMessageBox.confirm(`确定删除会话“${session.title}”吗？删除后将从会话历史中移除。`, '删除会话', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  if (sending.value || deletingSessionId.value !== null) return
+  deletingSessionId.value = session.id
+  try {
+    await deleteSession(session.id)
+    sessions.value = sessions.value.filter(item => item.id !== session.id)
+    if (currentSessionId.value === session.id) {
+      currentSessionId.value = null
+      messages.value = []
+      inputText.value = ''
+      resetEmotion()
+      if (sessions.value.length) await selectSession(sessions.value[0].id)
+    }
+    ElMessage.success('会话已删除')
+  } catch {
+    // The shared request handler displays the error; preserve the existing conversation.
+  } finally {
+    deletingSessionId.value = null
+  }
 }
 
 async function newSession() {
@@ -309,6 +375,7 @@ async function newSession() {
     const session = { id: data.id, title: data.title || title, time: '刚刚', messageCount: 0, duration: 0 }
     sessions.value.unshift(session)
     currentSessionId.value = session.id
+    resetEmotion()
     messages.value = [{ id: Date.now(), role: 'ai', content: '你好呀，我是小晴，今天感觉怎么样？' }]
   } catch (err) {
     console.error('新建会话失败:', err)
@@ -328,7 +395,10 @@ function scrollToBottom() {
 
 async function sendMessage() {
   const text = inputText.value.trim()
-  if (!text || !currentSessionId.value) return
+  if (!text || !currentSessionId.value || sending.value || deletingSessionId.value !== null) return
+  const sessionId = currentSessionId.value
+  emotionRequestId++
+  emotionLoading.value = true
   messages.value.push({ id: Date.now(), role: 'user', content: text })
   inputText.value = ''
   scrollToBottom()
@@ -337,23 +407,29 @@ async function sendMessage() {
   messages.value.push(aiMsg)
   scrollToBottom()
   try {
-    await streamChat(currentSessionId.value, text, {
+    await streamChat(sessionId, text, {
       onMessage: (chunk, fullText) => {
         aiMsg.content = fullText
         scrollToBottom()
       },
       onRisk: (risk) => {
+        if (risk.guidanceCode === 'OUTPUT_BLOCKED') {
+          ElMessage.info('本次回复暂时无法提供可靠建议，已替换为安全提示')
+          return
+        }
         if (risk.level && risk.level !== 'NORMAL') {
           ElMessage.warning(risk.level === 'CRISIS' ? '检测到紧急风险，请及时联系亲友或当地紧急服务' : '已识别到情绪风险信号，请关注自身状态')
         }
       },
     })
-    if (currentSessionId.value) loadEmotion(currentSessionId.value)
+    if (currentSessionId.value === sessionId) await loadEmotion(sessionId)
   } catch (err) {
     let msg = '抱歉，我遇到了一些问题，请稍后再试。'
     try { const p = JSON.parse(err.message); if (p.message) msg = p.message } catch {}
     aiMsg.content = msg
+    if (currentSessionId.value === sessionId) setEmotion({ analysisStatus: 'FAILED' })
   } finally {
+    if (currentSessionId.value === sessionId) emotionLoading.value = false
     sending.value = false
     scrollToBottom()
   }
@@ -395,6 +471,7 @@ $border: #eef0f2;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   background: linear-gradient(160deg, #fef3f2 0%, #f0fdfa 60%, #f5f3ff 100%);
 }
 
@@ -435,6 +512,8 @@ $border: #eef0f2;
 /* 主体布局 */
 .consult-body {
   flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
   display: flex;
   max-width: 1400px;
   width: 100%;
@@ -447,6 +526,7 @@ $border: #eef0f2;
 /* 左侧栏 */
 .sidebar {
   width: 320px;
+  min-height: 0;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(10px);
@@ -455,8 +535,12 @@ $border: #eef0f2;
   border: 1px solid rgba(255, 255, 255, 0.7);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
+
+.sidebar > * { flex-shrink: 0; }
 
 /* AI 信息 */
 .ai-info {
@@ -506,6 +590,8 @@ $border: #eef0f2;
 .ai-intro { font-size: 13px; line-height: 1.75; color: $text-body; text-align: center; }
 
 /* 情绪花园 */
+.emotion-note, .emotion-reason { font-size: 12px; line-height: 1.6; color: #64748b; margin: 8px 0; }
+.emotion-reason { color: #475569; }
 .mood-garden { padding: 20px 24px; border-bottom: 1px solid $border; }
 .sidebar-title { font-size: 15px; color: $text-dark; font-weight: 700; margin-bottom: 14px; }
 .emotion-score { position: relative; width: 100px; height: 100px; margin: 4px auto 12px; }
@@ -563,9 +649,9 @@ $border: #eef0f2;
 }
 
 /* 会话历史 */
-.history { flex: 1; display: flex; flex-direction: column; padding: 20px 24px; overflow: hidden; }
+.history { flex: 0 0 auto; display: flex; flex-direction: column; padding: 20px 24px; }
 .history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.history-list { display: flex; flex-direction: column; gap: 6px; }
 .history-item {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border-radius: 14px; cursor: pointer;
@@ -575,7 +661,9 @@ $border: #eef0f2;
   background: linear-gradient(135deg, rgba(20, 184, 166, 0.12), rgba(249, 164, 175, 0.1));
 }
 .history-icon { color: $text-muted; flex-shrink: 0; font-size: 18px; }
-.history-meta { display: flex; flex-direction: column; overflow: hidden; }
+.history-meta { display: flex; flex: 1; min-width: 0; flex-direction: column; overflow: hidden; }
+.history-delete { flex-shrink: 0; margin-left: auto; }
+.history-empty { font-size: 12px; color: $text-muted; text-align: center; line-height: 1.6; }
 .history-title {
   font-size: 14px; color: $text-dark;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

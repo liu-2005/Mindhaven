@@ -53,7 +53,8 @@ const activeMenu = computed(() => route.path)
 
 const menuItems = computed(() => {
   const backRoute = router.options.routes.find(r => r.path === '/back')
-  return backRoute?.children?.filter(c => c.meta) ?? []
+  let permissions = []; try { permissions = JSON.parse(localStorage.getItem('userInfo') || '{}').permissions || [] } catch {}
+  return backRoute?.children?.filter(c => c.meta && (!c.meta.permission || permissions.includes(c.meta.permission))).map(c => ({ ...c, path: `/back/${c.path}` })) ?? []
 })
 </script>
 

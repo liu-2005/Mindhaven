@@ -31,7 +31,7 @@
             <el-icon :size="24"><ChatDotRound /></el-icon>
             <div>
               <strong>咨询陪伴</strong>
-              <span>需要的时候，和专业咨询师聊聊</span>
+              <span>和AI梳理感受，获得日常陪伴</span>
             </div>
           </div>
         </div>

@@ -1,7 +1,9 @@
 # MindHaven API 契约基线
 
-> 版本：v1-draft · 2026-08-01  
-> 状态：目标契约；当前后端仅实现 `GET /api/health`。
+2026-10-21更新：Bearer凭证改为服务端随机会话，退出撤销、刷新轮换；注册必填 `privacyConsentVersion=2026-10-21`。管理端日记读取要求 `risk:read-sensitive`、删除要求 `risk:resolve`。风险详情增加必填查询参数 `reason`（5–200字），处置必填 `note`（1–500字）。文件上传要求 `article:manage`，仅接受ARTICLE用途的PNG/JPEG，并重新编码。聊天每条最长4000字，已完成requestId复用结果。详见 [完善记录](./IMPROVEMENTS_2026-10-21.md)；下方旧基线与此冲突时以本更新为准。
+
+> 版本：v1-implemented-draft · 2026-08-03
+> 状态：`/api/v1` 主体接口已实现并与前端联调；仍缺 OpenAPI 与完整契约测试。
 
 ## 1. 通用约定
 
@@ -9,8 +11,8 @@
 - 内容类型：JSON 使用 `application/json; charset=utf-8`，上传使用 `multipart/form-data`，流式对话使用 `text/event-stream`。
 - 字段命名：请求与响应统一 `camelCase`。
 - 时间：ISO 8601，包含时区，例如 `2026-08-01T10:30:00+08:00`。
-- ID：服务端生成，JSON 中统一使用字符串，避免前端数字精度问题。
-- 认证：目标为 `Authorization: Bearer <access-token>`；最终方案以 ADR-001 为准。
+- ID：当前服务端使用 MySQL `BIGINT`，JSON 中返回数字；若 ID 可能超过 JavaScript 安全整数，发布前改为字符串序列化。
+- 认证：当前使用 `Authorization: Bearer <access-token>` 和本地 HMAC-SHA256 令牌；生产方案仍需补充撤销/刷新与 ADR。
 - 分页：统一 `page`（从 1 开始）、`size`（默认 20，最大 100）。
 
 ### 1.1 成功响应
@@ -66,8 +68,8 @@
 | --- | --- | --- | --- |
 | POST | `/auth/register` | 公开 | 注册普通用户；忽略任何角色字段 |
 | POST | `/auth/login` | 公开 | 登录并返回服务端身份摘要 |
-| POST | `/auth/logout` | 登录 | 使当前会话/令牌失效 |
-| POST | `/auth/refresh` | 刷新凭证 | 轮换访问凭证 |
+| POST | `/auth/logout` | 登录 | 当前仅返回成功，客户端清理令牌；服务端撤销未实现 |
+| POST | `/auth/refresh` | 刷新凭证 | 当前返回 401，要求重新登录；轮换未实现 |
 | GET | `/users/me` | 登录 | 当前用户资料和权限 |
 | PATCH | `/users/me` | 登录 | 修改允许的个人资料字段 |
 | GET | `/admin/users` | 用户管理员 | 分页查询用户，不默认返回敏感正文 |
@@ -154,6 +156,10 @@ data: {"messageId":"01JMSG...","finishReason":"STOP"}
 
 错误使用 `event: error`，`data` 仍遵循通用错误结构。SSE 响应必须关闭代理缓冲，并发送必要的心跳；客户端仅处理上述字段，不再猜测供应商格式。
 
+2026-10-20 接入更新：默认通过 DeepSeek Chat Completions 生成回复，配置见 `backend/README.md`。当前仍为等待上游完整回复后切片推送 SSE；高风险分流保留本地规则。情绪分析单独使用 DeepSeek JSON Output，只输入最近20条聊天消息中的用户发言，重点参考最新表达。密钥缺失、上游认证失败、余额不足、限流、超时等聊天错误通过 `event: error` 返回 `AI_PROVIDER_UNAVAILABLE` 及可读提示，不回退为普通本地回复。
+
+情绪分析响应增加 `analysisStatus`：`PENDING`（尚无分析）、`SUCCEEDED`（成功）、`FAILED`（本轮分析失败）。失败时 `emotionScore` 为 null，保留正常聊天回复；前端不能把 null 当0分或展示上一轮分数。分数范围包含0，越高代表表达越积极稳定，不是临床量表。
+
 情绪分析响应：
 
 ```json
@@ -204,20 +210,17 @@ data: {"messageId":"01JMSG...","finishReason":"STOP"}
 | GET | `/admin/risk-events/{eventId}` | 敏感查看权限 | 详情，记录访问理由和审计 |
 | PUT | `/admin/risk-events/{eventId}/status` | 安全运营 | `OPEN → REVIEWING → RESOLVED/FALSE_POSITIVE` |
 
-## 8. 当前前端迁移映射
+## 8. 当前实现偏差与兼容边界
 
-| 当前调用 | 目标调用 | 迁移说明 |
+| 项目 | 当前实现 | 收敛方向 |
 | --- | --- | --- |
-| `/user/login` | `/v1/auth/login` | 移除请求中的 `userType` |
-| `/register` | `/v1/auth/register` | 统一 auth 前缀 |
-| `/user/info` | `/v1/users/me` | 角色由服务端返回 |
-| `/emotion-diary` | `/v1/diaries` | 字段与评分范围统一 |
-| `/emotion-diary/admin/page` | `/v1/admin/diaries` | 敏感字段按权限返回 |
-| `/psychological-chat/session/start` | `/v1/chat/sessions` | session ID 统一字符串，无 `session_` 前缀转换 |
-| 两种 messages 路径兜底 | `/v1/chat/sessions/{id}/messages` | 删除客户端路径重试 |
-| `/psychological-chat/stream` | `/v1/chat/stream` | 固定 SSE 事件与字段 |
-| `/knowledge/article/page` | `/v1/knowledge/articles` | 公共与管理查询分离 |
-| `/file/upload` | `/v1/files` | 返回 fileId/受控 URL |
+| ID | JSON 数字 | 超过安全整数前统一字符串化，并补契约测试 |
+| 登出/刷新 | 登出不撤销；刷新返回未认证 | 引入服务端会话或可撤销刷新令牌轮换 |
+| AI | DeepSeek 适配器（默认 `deepseek-flash`）生成回复与情绪评分；高风险指引保留本地规则 | 自有 SSE 协议；配置 `DEEPSEEK_API_KEY`；可用 `AI_PROVIDER=local` 切换纯本地演示 |
+| OpenAPI | 未提供 | 生成规范并让前端客户端/类型与 CI 以其为基线 |
+| 协议异常 | 不支持的 `Content-Type` 会被映射成 500 | 映射为 415/400，纳入 Controller 契约测试 |
+| 文件下载 | `GET /files/{id}` 当前作为公开路径放行 | 按业务对象可见性区分公开封面与私有文件 |
+| 权限集合 | 角色合并后可能返回重复 permission code | 服务端去重并稳定排序 |
 
 ## 9. 契约测试要求
 

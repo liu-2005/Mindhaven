@@ -76,6 +76,10 @@ public class DiaryService {
     public EmotionDiary update(Long userId, Long diaryId, DiaryRequest request) {
         validate(request);
         EmotionDiary diary = getMine(userId, diaryId);
+        if (!diary.getDiaryDate().equals(request.diaryDate())
+                && diaryRepository.existsByUserIdAndDiaryDateAndDeletedAtIsNull(userId, request.diaryDate())) {
+            throw new BizException(ErrorCode.RESOURCE_CONFLICT, "该日期已有一篇日记，请选择其他日期");
+        }
         apply(diary, request);
         diary.setVersion((diary.getVersion() == null ? 0 : diary.getVersion()) + 1);
         return diaryRepository.save(diary);

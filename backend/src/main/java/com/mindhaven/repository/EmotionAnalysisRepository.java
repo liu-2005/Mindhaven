@@ -11,4 +11,6 @@ public interface EmotionAnalysisRepository extends JpaRepository<EmotionAnalysis
     Optional<EmotionAnalysis> findFirstBySourceTypeAndSourceIdAndCurrentResultOrderByIdDesc(String sourceType, Long sourceId, Boolean currentResult);
 
     List<EmotionAnalysis> findBySourceTypeAndSourceIdAndCurrentResultTrue(String sourceType, Long sourceId);
+
+    void deleteBySourceTypeAndSourceId(String sourceType, Long sourceId);
 }

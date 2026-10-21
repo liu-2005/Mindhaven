@@ -5,5 +5,5 @@ import java.util.List;
 
 public record EmotionAnalysisDto(Integer emotionScore, String label, Boolean isNegative, String riskLevel,
                                  String riskDescription, String suggestion, List<String> improvementSuggestions,
-                                 List<String> keywords, LocalDateTime analyzedAt, String modelVersion) {
+                                 List<String> keywords, LocalDateTime analyzedAt, String modelVersion, String analysisStatus) {
 }

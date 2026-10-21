@@ -6,6 +6,9 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.UUID;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
 
 import com.mindhaven.common.BizException;
 import com.mindhaven.common.ErrorCode;
@@ -31,6 +34,7 @@ public class FileService {
 
     @Transactional
     public FileObject upload(Long ownerId, MultipartFile file, String businessType, Long businessId, String businessField) {
+        if (!"ARTICLE".equals(businessType)) throw new BizException(ErrorCode.VALIDATION_ERROR, "当前仅支持上传公开文章图片");
         if (file == null || file.isEmpty()) {
             throw new BizException(ErrorCode.VALIDATION_ERROR, "文件不能为空");
         }
@@ -42,21 +46,52 @@ public class FileService {
         if (contentType == null) {
             contentType = "application/octet-stream";
         }
+        try {
+            byte[] safeImage = normalizeImage(file.getBytes());
+            return store(ownerId, safeImage, "image.png", "image/png", businessType, businessId, businessField);
+        } catch (IOException e) {
+            throw new BizException(ErrorCode.VALIDATION_ERROR, "无法读取图片，请使用完整的PNG或JPEG文件");
+        }
+    }
 
+    private byte[] normalizeImage(byte[] bytes) throws IOException {
+        try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new BizException(ErrorCode.VALIDATION_ERROR, "仅支持有效的 PNG、JPEG 图片");
+            var reader = readers.next();
+            try {
+                String format = reader.getFormatName().toLowerCase(java.util.Locale.ROOT);
+                if (!java.util.Set.of("png", "jpeg", "jpg").contains(format)) {
+                    throw new BizException(ErrorCode.VALIDATION_ERROR, "仅支持 PNG、JPEG 图片");
+                }
+                reader.setInput(input, true, true);
+                if (reader.getWidth(0) > 4096 || reader.getHeight(0) > 4096) {
+                    throw new BizException(ErrorCode.VALIDATION_ERROR, "图片长宽不能超过4096像素");
+                }
+                var image = reader.read(0);
+                var output = new ByteArrayOutputStream();
+                ImageIO.write(image, "png", output);
+                if (output.size() > MAX_SIZE) throw new BizException(ErrorCode.FILE_TOO_LARGE, "处理后的图片不能超过5MB");
+                return output.toByteArray();
+            } finally { reader.dispose(); }
+        }
+    }
+
+    /**
+     * 直接存储字节内容（供服务端生成/种子数据使用，跳过大小与 MIME 校验）。
+     */
+    public FileObject store(Long ownerId, byte[] bytes, String originalName, String contentType,
+                            String businessType, Long businessId, String businessField) {
+        if (bytes == null || bytes.length == 0) {
+            throw new BizException(ErrorCode.VALIDATION_ERROR, "文件内容为空");
+        }
         String ext = "";
         int dot = originalName.lastIndexOf('.');
         if (dot >= 0) {
             ext = originalName.substring(dot);
         }
         String storageKey = java.time.LocalDate.now() + "/" + UUID.randomUUID() + ext;
-        byte[] bytes;
-        String sha256;
-        try {
-            bytes = file.getBytes();
-            sha256 = sha256(bytes);
-        } catch (IOException e) {
-            throw new BizException(ErrorCode.INTERNAL_ERROR, "读取文件失败");
-        }
+        String sha256 = sha256(bytes);
 
         Path target = storagePath(storageKey);
         try {
@@ -104,7 +139,10 @@ public class FileService {
     }
 
     private Path storagePath(String storageKey) {
-        return Path.of(appProperties.getStorageDir()).resolve(storageKey).toAbsolutePath().normalize();
+        Path root = Path.of(appProperties.getStorageDir()).toAbsolutePath().normalize();
+        Path target = root.resolve(storageKey).normalize();
+        if (!target.startsWith(root)) throw new BizException(ErrorCode.FORBIDDEN, "非法文件路径");
+        return target;
     }
 
     private String sha256(byte[] bytes) {

@@ -40,14 +40,14 @@
 
       <div class="content">
         <div class="diary-card">
-          <h2 class="title">今日情绪记录</h2>
+          <div class="diary-heading"><h2 class="title">{{ editingId ? '编辑情绪记录' : '今日情绪记录' }}</h2><el-button v-if="editingId" @click="resetForm">写新日记</el-button></div>
 
           <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
 
             <!-- 记录日期 -->
             <div class="section">
               <p>选择日期</p>
-              <el-date-picker v-model="form.diaryDate" type="date" placeholder="选择日期" style="width:220px" />
+              <el-date-picker v-model="form.diaryDate" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width:220px" />
             </div>
 
             <!-- 心情评分 -->
@@ -106,23 +106,60 @@
 
               <div class="action-buttons">
                 <el-button type="primary" size="large" :loading="submitting" @click="handleSubmit" round>
-                  保存日记
+                  {{ editingId ? '保存修改' : '保存日记' }}
                 </el-button>
               </div>
             </div>
           </el-form>
         </div>
+        <div class="diary-card" v-loading="historyLoading">
+          <div class="diary-heading"><h2 class="title">我的情绪趋势</h2><el-radio-group v-model="trendDays" @change="loadHistory"><el-radio-button :value="7">近7天</el-radio-button><el-radio-button :value="30">近30天</el-radio-button></el-radio-group></div>
+          <p v-if="!trends.totalRecords" class="empty-hint">这段时间还没有记录，保存日记后就能看到趋势。</p>
+          <template v-else>
+            <p class="trend-summary">共记录 {{ trends.totalRecords }} 天 · 平均心情 {{ trends.averageScore }}/10</p>
+            <div class="trend-chart" role="img" :aria-label="`近${trendDays}天的心情趋势，平均${trends.averageScore}分`">
+              <div v-for="day in trends.daily" :key="day.date" class="trend-day" :title="`${day.date}：${day.recordCount ? day.avgScore + '/10' : '未记录'}`">
+                <div class="trend-track"><span v-if="day.recordCount" :style="{ height: `${day.avgScore * 10}%` }"></span></div>
+                <small>{{ day.date.slice(5) }}</small>
+              </div>
+            </div>
+            <p class="empty-hint">空白日期表示未记录，不计入平均分。</p>
+          </template>
+        </div>
+        <div class="diary-card" v-loading="historyLoading">
+          <div class="diary-heading"><h2 class="title">我的日记</h2><el-button @click="loadHistory">刷新</el-button></div>
+          <el-table :data="diaryList" empty-text="还没有日记，写下第一篇吧">
+            <el-table-column prop="diaryDate" label="日期" width="120" />
+            <el-table-column prop="dominantEmotion" label="情绪" width="90" />
+            <el-table-column label="心情" width="90"><template #default="{ row }">{{ row.moodScore }}/10</template></el-table-column>
+            <el-table-column prop="content" label="感想" min-width="150" show-overflow-tooltip />
+            <el-table-column label="操作" width="170"><template #default="{ row }">
+              <el-button link @click="viewDiary(row)">详情</el-button>
+              <el-button link type="primary" :disabled="submitting" @click="editDiary(row)">编辑</el-button>
+              <el-button link type="danger" :disabled="submitting || deletingId !== null" @click="removeDiary(row)">删除</el-button>
+            </template></el-table-column>
+          </el-table>
+          <el-pagination v-model:current-page="historyPage" :page-size="10" :total="historyTotal" layout="prev, pager, next, total" @current-change="loadHistory" />
+        </div>
       </div>
     </div>
+    <el-dialog v-model="detailVisible" title="日记详情" width="min(560px, 92vw)">
+      <template v-if="detailDiary">
+        <p>{{ detailDiary.diaryDate }} · {{ detailDiary.dominantEmotion }} · 心情 {{ detailDiary.moodScore }}/10</p>
+        <p>睡眠 {{ detailDiary.sleepQuality ?? '未填写' }}/5 · 压力 {{ detailDiary.stressLevel ?? '未填写' }}/5</p>
+        <h4 class="detail-heading">触发因素</h4><p class="diary-text">{{ detailDiary.emotionTriggers || '未填写' }}</p>
+        <h4 class="detail-heading">感想</h4><p class="diary-text">{{ detailDiary.content }}</p>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { logout } from '@/api/user'
-import { createDiary } from '@/api/emotionDiary'
+import { createDiary, getDiaryPage, getDiaryDetail, updateDiary, deleteDiary, getDiaryTrends } from '@/api/emotionDiary'
 
 const router = useRouter()
 
@@ -166,7 +203,19 @@ const emotionOptions = [
 const formRef = ref(null)
 const submitting = ref(false)
 
-const today = new Date().toISOString().slice(0, 10)
+const localDate = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+const today = localDate()
+const editingId = ref(null)
+const diaryList = ref([])
+const historyPage = ref(1)
+const historyTotal = ref(0)
+const historyLoading = ref(false)
+const deletingId = ref(null)
+const trendDays = ref(7)
+const trends = ref({ totalRecords: 0, averageScore: 0, daily: [] })
+const detailDiary = ref(null)
+const detailVisible = ref(false)
+let historyRequest = 0
 const form = reactive({
   diaryDate: today,
   moodScore: 0,
@@ -187,14 +236,20 @@ const rules = {
   stressLevel: [{ required: true, message: '请选择压力水平', trigger: 'change' }],
 }
 
-const handleSubmit = () => {
-  if (!formRef.value) return
-  formRef.value.validate(async (valid) => {
-    if (!valid) return
+const handleSubmit = async () => {
+  if (submitting.value) return
+  if (!form.diaryDate || !form.dominantEmotion || !form.content.trim() || form.moodScore < 1 || form.moodScore > 10
+      || form.sleepQuality < 1 || form.sleepQuality > 5 || form.stressLevel < 1 || form.stressLevel > 5) {
+    ElMessage.warning('请填写日期、主要情绪和感想，并选择心情、睡眠和压力评分')
+    return
+  }
     submitting.value = true
     try {
-      await createDiary({ ...form })
+      const response = editingId.value ? await updateDiary(editingId.value, { ...form }) : await createDiary({ ...form })
+      editingId.value = response.data.id
       ElMessage.success('日记保存成功')
+      historyPage.value = 1
+      await loadHistory()
     } catch (err) {
       if (err?.message?.includes('已有一篇')) {
         ElMessage.warning('该日期已有一篇日记，请修改后再保存')
@@ -204,8 +259,49 @@ const handleSubmit = () => {
     } finally {
       submitting.value = false
     }
-  })
 }
+
+async function loadHistory() {
+  const requestId = ++historyRequest
+  historyLoading.value = true
+  try {
+    const [page, trend] = await Promise.all([getDiaryPage({ page: historyPage.value, size: 10 }), getDiaryTrends({ days: trendDays.value })])
+    if (requestId !== historyRequest) return
+    diaryList.value = page.data.items
+    historyTotal.value = page.data.total
+    trends.value = trend.data
+  } catch { /* Shared request handler shows the error. */ }
+  finally { if (requestId === historyRequest) historyLoading.value = false }
+}
+function resetForm() {
+  editingId.value = null
+  Object.assign(form, { diaryDate: localDate(), moodScore: 0, dominantEmotion: '', emotionTriggers: '', content: '', sleepQuality: 0, stressLevel: 0 })
+  formRef.value?.clearValidate()
+}
+async function viewDiary(row) {
+  try { detailDiary.value = (await getDiaryDetail(row.id)).data; detailVisible.value = true } catch {}
+}
+async function editDiary(row) {
+  try {
+    const data = (await getDiaryDetail(row.id)).data
+    editingId.value = data.id
+    for (const key of Object.keys(form)) form[key] = data[key] ?? (['sleepQuality', 'stressLevel'].includes(key) ? 0 : '')
+    await nextTick()
+    formRef.value?.$el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } catch {}
+}
+async function removeDiary(row) {
+  try { await ElMessageBox.confirm(`确定删除 ${row.diaryDate} 的日记吗？`, '删除日记', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }) } catch { return }
+  deletingId.value = row.id
+  try {
+    await deleteDiary(row.id)
+    if (editingId.value === row.id) resetForm()
+    if (diaryList.value.length === 1 && historyPage.value > 1) historyPage.value--
+    await loadHistory()
+    ElMessage.success('日记已删除')
+  } catch {} finally { deletingId.value = null }
+}
+onMounted(() => { if (loggedIn.value) loadHistory() })
 
 const goHome = () => router.push('/')
 const goConsultation = () => router.push('/consultation')
@@ -240,6 +336,15 @@ $text-muted: #9ca3af;
   min-height: 100vh;
   background: #f9fafb;
 }
+.diary-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.trend-summary, .empty-hint { margin: 12px 0; color: #64748b; line-height: 1.6; }
+.trend-chart { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0; }
+.trend-day { min-width: 42px; flex: 1; text-align: center; color: #64748b; }
+.trend-track { height: 100px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; margin-bottom: 6px; }
+.trend-track span { display: block; width: 100%; background: #14b8a6; border-radius: 6px; }
+.diary-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.detail-heading { margin: 18px 0 8px; }
+:deep(.el-pagination) { margin-top: 20px; justify-content: center; flex-wrap: wrap; }
 
 .topbar {
   height: 64px;
@@ -295,6 +400,7 @@ $text-muted: #9ca3af;
     margin: 0 auto;
     width: 980px;
     max-width: 100%;
+    box-sizing: border-box;
     padding: 20px;
 
     .diary-card {

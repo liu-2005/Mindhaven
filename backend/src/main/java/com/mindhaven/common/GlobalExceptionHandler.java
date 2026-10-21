@@ -84,4 +84,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.failure(ErrorCode.INTERNAL_ERROR));
     }
+
+    @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Object>> handleUnsupportedMediaType(Exception ex) {
+        return ResponseEntity.status(415).body(ApiResponse.failure(ErrorCode.VALIDATION_ERROR, "不支持的请求内容类型"));
+    }
+
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleConflict(Exception ex) {
+        return ResponseEntity.status(409).body(ApiResponse.failure(ErrorCode.RESOURCE_CONFLICT, "数据已存在或已被修改，请刷新后重试"));
+    }
 }

@@ -1,0 +1,21 @@
+CREATE TABLE mh_chat_turn (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    session_id BIGINT UNSIGNED NOT NULL,
+    client_request_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    message_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    owner_token VARCHAR(36) CHARACTER SET ascii COLLATE ascii_bin NULL,
+    lease_until DATETIME(3) NULL,
+    result_json LONGTEXT NULL COMMENT 'Only reviewed content, analysis and safety codes; no rejected raw output',
+    assistant_message_id BIGINT UNSIGNED NULL,
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_mh_chat_turn_request (session_id, client_request_id),
+    KEY idx_mh_chat_turn_recovery (status, lease_until),
+    CONSTRAINT fk_mh_chat_turn_session FOREIGN KEY (session_id) REFERENCES mh_chat_session(id) ON DELETE CASCADE,
+    CONSTRAINT fk_mh_chat_turn_user FOREIGN KEY (user_id) REFERENCES mh_user(id) ON DELETE CASCADE,
+    CONSTRAINT chk_mh_chat_turn_status CHECK (status IN ('GENERATING', 'PREPARED', 'COMPLETED')),
+    CONSTRAINT chk_mh_chat_turn_json CHECK (result_json IS NULL OR JSON_VALID(result_json))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

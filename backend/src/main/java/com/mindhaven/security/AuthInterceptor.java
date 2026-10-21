@@ -2,7 +2,6 @@ package com.mindhaven.security;
 
 import java.nio.charset.StandardCharsets;
 
-import com.mindhaven.config.AppProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
@@ -13,12 +12,12 @@ import org.springframework.web.servlet.HandlerInterceptor;
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
 
-    private final AppProperties appProperties;
     private final PermissionService permissionService;
+    private final LoginSessionService sessions;
 
-    public AuthInterceptor(AppProperties appProperties, PermissionService permissionService) {
-        this.appProperties = appProperties;
+    public AuthInterceptor(PermissionService permissionService, LoginSessionService sessions) {
         this.permissionService = permissionService;
+        this.sessions = sessions;
     }
 
     @Override
@@ -40,27 +39,21 @@ public class AuthInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        AuthContext ctx = JwtUtil.parse(appProperties.getJwtSecret(), token);
+        AuthContext ctx = sessions.authenticate(token);
         if (ctx == null) {
             writeError(response, 401, "TOKEN_EXPIRED", "登录已过期，请重新登录");
             return false;
         }
 
-        AuthContextHolder.set(ctx);
-        try {
-            if (handler instanceof HandlerMethod hm) {
-                RequirePermission rp = hm.getMethodAnnotation(RequirePermission.class);
-                if (rp != null && rp.value().length > 0) {
-                    if (!permissionService.hasAnyPermission(ctx.userId(), rp.value())) {
-                        writeError(response, 403, "FORBIDDEN", "权限不足");
-                        return false;
-                    }
-                }
+        if (handler instanceof HandlerMethod hm) {
+            RequirePermission rp = hm.getMethodAnnotation(RequirePermission.class);
+            if (rp != null && rp.value().length > 0 && !permissionService.hasAnyPermission(ctx.userId(), rp.value())) {
+                writeError(response, 403, "FORBIDDEN", "权限不足");
+                return false;
             }
-            return true;
-        } finally {
-            // 保持上下文直到 afterCompletion
         }
+        AuthContextHolder.set(ctx);
+        return true;
     }
 
     @Override

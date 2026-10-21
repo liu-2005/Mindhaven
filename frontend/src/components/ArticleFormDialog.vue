@@ -26,7 +26,7 @@
           class="cover-uploader"
           :show-file-list="false"
           :before-upload="handleCoverBeforeUpload"
-          accept="image/*"
+          accept="image/png,image/jpeg"
         >
           <img v-if="form.coverImage" :src="form.coverImage" class="cover-preview" alt="封面预览" />
           <div v-else class="cover-uploader-placeholder">
@@ -156,6 +156,7 @@ const clearCover = () => {
 }
 
 const handleCoverBeforeUpload = (file) => {
+  if (!['image/png', 'image/jpeg'].includes(file.type)) { ElMessage.warning('请选择PNG或JPEG图片'); return false }
   if (file.size > 5 * 1024 * 1024) {
     ElMessage.warning('图片不能超过 5MB')
     return false

@@ -13,7 +13,11 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
 
     Page<ChatMessage> findBySessionIdOrderByIdAsc(Long sessionId, Pageable pageable);
 
+    Page<ChatMessage> findBySessionIdOrderByIdDesc(Long sessionId, Pageable pageable);
+
     long countBySessionId(Long sessionId);
+
+    void deleteBySessionId(Long sessionId);
 
     Optional<ChatMessage> findBySessionIdAndClientRequestIdAndSenderType(Long sessionId, String clientRequestId, String senderType);
 }

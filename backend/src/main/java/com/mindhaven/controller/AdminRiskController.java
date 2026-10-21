@@ -52,17 +52,18 @@ public class AdminRiskController {
         int safeSize = Math.min(Math.max(size, 1), 100);
         Pageable pageable = PageRequest.of(Math.max(page, 1) - 1, safeSize, Sort.by(Sort.Direction.DESC, "detectedAt"));
         Page<RiskEvent> result = riskEventRepository.search(status, level, pageable);
-        var items = result.getContent().stream().map(e -> RiskEventDto.of(e, parseCodes(e.getTriggerCodesJson()))).toList();
+        var items = result.getContent().stream().map(e -> RiskEventDto.summary(e, parseCodes(e.getTriggerCodesJson()))).toList();
         return ApiResponse.success(PageResult.of(items, page, safeSize, result.getTotalElements()));
     }
 
     @GetMapping("/{eventId}")
     @RequirePermission("risk:read-sensitive")
-    public ApiResponse<RiskEventDto> detail(@PathVariable Long eventId) {
+    public ApiResponse<RiskEventDto> detail(@PathVariable Long eventId, @RequestParam String reason) {
+        if (reason.trim().length() < 5 || reason.length() > 200) throw new BizException(ErrorCode.VALIDATION_ERROR, "访问理由需为5–200字");
         RiskEvent event = riskEventRepository.findById(eventId)
                 .orElseThrow(() -> new BizException(ErrorCode.RESOURCE_NOT_FOUND));
         auditService.record(AuthContextHolder.userId(), "risk:view-sensitive", "RISK_EVENT", String.valueOf(eventId),
-                "SUCCESS", "查看风险敏感详情", null);
+                "SUCCESS", reason.trim(), null);
         return ApiResponse.success(RiskEventDto.of(event, parseCodes(event.getTriggerCodesJson())));
     }
 
@@ -72,15 +73,20 @@ public class AdminRiskController {
         RiskEvent event = riskEventRepository.findById(eventId)
                 .orElseThrow(() -> new BizException(ErrorCode.RESOURCE_NOT_FOUND));
         String status = body.get("status");
-        if (!List.of("OPEN", "REVIEWING", "RESOLVED", "FALSE_POSITIVE").contains(status)) {
+        String note = body.get("note");
+        if (note == null || note.isBlank() || note.length() > 500) throw new BizException(ErrorCode.VALIDATION_ERROR, "请填写1–500字的处置说明");
+        if (status == null || !List.of("OPEN", "REVIEWING", "RESOLVED", "FALSE_POSITIVE").contains(status)) {
             throw new BizException(ErrorCode.VALIDATION_ERROR, "非法的风险事件状态");
         }
         event.setStatus(status);
         if ("RESOLVED".equals(status) || "FALSE_POSITIVE".equals(status)) {
             event.setResolvedBy(AuthContextHolder.userId());
             event.setResolvedAt(LocalDateTime.now());
+        } else {
+            event.setResolvedBy(null);
+            event.setResolvedAt(null);
         }
-        event.setResolutionNote(body.get("note"));
+        event.setResolutionNote(note.trim());
         riskEventRepository.save(event);
         auditService.record(AuthContextHolder.userId(), "risk:update-status", "RISK_EVENT", String.valueOf(eventId),
                 "SUCCESS", "更新风险事件状态为 " + status, null);

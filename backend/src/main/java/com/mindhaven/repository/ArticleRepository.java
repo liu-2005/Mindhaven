@@ -13,6 +13,10 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     Optional<Article> findByIdAndDeletedAtIsNull(Long id);
 
+    Optional<Article> findByTitleAndDeletedAtIsNull(String title);
+
+    boolean existsByTitle(String title);
+
     @Query("select a from Article a where a.deletedAt is null " +
             "and (:categoryId is null or a.categoryId = :categoryId) " +
             "and (:status is null or a.status = :status) " +

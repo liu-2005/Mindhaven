@@ -25,7 +25,7 @@ public class AdminDiaryController {
     }
 
     @GetMapping
-    @RequirePermission({"diary:self:read", "risk:read"})
+    @RequirePermission("risk:read-sensitive")
     public ApiResponse<PageResult<DiaryDto>> page(@RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int size,
                                                   @RequestParam(required = false) Long userId,
@@ -37,7 +37,7 @@ public class AdminDiaryController {
     }
 
     @DeleteMapping("/{diaryId}")
-    @RequirePermission({"risk:resolve", "diary:self:write"})
+    @RequirePermission("risk:resolve")
     public ApiResponse<Void> delete(@PathVariable Long diaryId) {
         diaryService.adminDelete(AuthContextHolder.userId(), diaryId);
         return ApiResponse.success(null);

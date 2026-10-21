@@ -7,6 +7,7 @@ import com.mindhaven.common.BizException;
 import com.mindhaven.common.ErrorCode;
 import com.mindhaven.entity.FileObject;
 import com.mindhaven.security.AuthContextHolder;
+import com.mindhaven.security.RequirePermission;
 import com.mindhaven.service.FileService;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ public class FileController {
     }
 
     @PostMapping
+    @RequirePermission("article:manage")
     public ApiResponse<Map<String, Object>> upload(@RequestParam("file") MultipartFile file,
                                                    @RequestParam(required = false) String businessType,
                                                    @RequestParam(required = false) Long businessId,
@@ -43,18 +45,22 @@ public class FileController {
     @GetMapping("/{fileId}")
     public ResponseEntity<byte[]> download(@PathVariable Long fileId) {
         FileObject file = fileService.get(fileId);
+        if (!"ARTICLE".equals(file.getBusinessType())) throw new BizException(ErrorCode.RESOURCE_NOT_FOUND);
         byte[] bytes = fileService.readBytes(file);
         String contentType = file.getContentType();
         if (contentType == null) {
             contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
         }
         return ResponseEntity.ok()
-                .header("Content-Disposition", "inline")
+                .header("Content-Disposition", java.util.Set.of("image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml").contains(contentType) ? "inline" : "attachment")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'")
                 .contentType(MediaType.parseMediaType(contentType))
                 .body(bytes);
     }
 
     @DeleteMapping("/{fileId}")
+    @RequirePermission("article:manage")
     public ApiResponse<Void> delete(@PathVariable Long fileId) {
         FileObject file = fileService.get(fileId);
         Long owner = file.getOwnerUserId();

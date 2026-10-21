@@ -1,7 +1,7 @@
 # MindHaven 数据模型设计
 
-> 版本：v0.1 · 2026-08-01  
-> 状态：V1 基线已落地，后续变更仍需通过数据库设计评审。  
+> 版本：v0.2 · 2026-08-03
+> 状态：V1-V4 已落地并通过 Flyway/Hibernate 校验，后续变更仍需通过数据库设计评审。
 > 实现位置：[`backend/src/main/resources/db/migration`](../backend/src/main/resources/db/migration)
 
 ## 1. 设计原则
@@ -27,6 +27,7 @@ erDiagram
     ARTICLE_CATEGORY ||--o{ ARTICLE : classifies
     ARTICLE ||--o{ ARTICLE_TAG_REL : tagged
     ARTICLE_TAG ||--o{ ARTICLE_TAG_REL : applies
+    ARTICLE ||--o{ ARTICLE_VIEW_EVENT : viewed
     ARTICLE ||--o{ FILE_OBJECT : references
     USER ||--o{ RISK_EVENT : subject
     CHAT_MESSAGE o|--o{ RISK_EVENT : triggers
@@ -141,9 +142,9 @@ erDiagram
 
 标签名称唯一；关联表以 `(article_id, tag_id)` 为联合唯一键。不要长期以逗号字符串作为事实模型。
 
-#### `mh_article_view_event`（可选，尚未创建）
+#### `mh_article_view_event`（V4 已创建）
 
-用于可审计去重统计，保存 `article_id`、匿名访客/用户哈希、日期和时间。流量增大后可改为事件队列与聚合表；避免保存不必要的完整 IP。
+当前保存 `article_id`、`view_date` 与创建时间，用于按日统计阅读趋势。现实现每次详情请求都会新增事件并累加文章 `view_count`，尚未按用户/访客去重；正式指标需要明确去重窗口并决定是否增加匿名主体哈希。流量增大后可改为异步事件与日聚合表，避免保存完整 IP。
 
 ### 3.5 文件
 
@@ -209,8 +210,8 @@ stateDiagram-v2
 
 ## 6. 迁移计划
 
-1. 已引入 Flyway，并建立 `V1__baseline_schema.sql` 与 `V2__seed_reference_data.sql`。
-2. 下一步实现用户/RBAC/认证会话与审计代码，完成认证授权。
-3. 纵向打通日记、知识库和文件模块，交付非 AI 闭环。
-4. 实现会话、消息、分析和风险模块，接入 AI。
-5. 加入统计所需索引/聚合表，以真实查询计划验证，而不是提前过度设计。
+1. 已引入 Flyway：V1 基线、V2 参考数据、V3 中文情绪列、V4 文章阅读事件均已应用。
+2. 用户/RBAC、日记、知识库、文件、会话、分析、风险与审计实体/仓储已落地。
+3. 下一步用 Testcontainers 验证空库迁移、约束、索引和聚合查询，并补充跨版本升级测试。
+4. 明确阅读去重、数据保留、软删除和物理清理策略，再通过新迁移交付所需字段/索引。
+5. 随真实查询量评估聚合表或事件异步化，不提前拆分数据库。

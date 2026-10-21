@@ -5,12 +5,11 @@ import java.util.List;
 
 import com.mindhaven.common.BizException;
 import com.mindhaven.common.ErrorCode;
-import com.mindhaven.config.AppProperties;
 import com.mindhaven.entity.User;
 import com.mindhaven.repository.PermissionRepository;
 import com.mindhaven.repository.UserRepository;
 import com.mindhaven.security.AuthContext;
-import com.mindhaven.security.JwtUtil;
+import com.mindhaven.security.LoginSessionService;
 import com.mindhaven.security.PermissionService;
 import org.springframework.stereotype.Service;
 
@@ -20,16 +19,16 @@ public class AuthService implements PermissionService {
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
     private final UserService userService;
-    private final AppProperties appProperties;
+    private final LoginSessionService sessions;
 
     public AuthService(UserRepository userRepository,
                        PermissionRepository permissionRepository,
                        UserService userService,
-                       AppProperties appProperties) {
+                       LoginSessionService sessions) {
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
         this.userService = userService;
-        this.appProperties = appProperties;
+        this.sessions = sessions;
     }
 
     public AuthContext login(String usernameOrEmail, String rawPassword) {
@@ -53,8 +52,7 @@ public class AuthService implements PermissionService {
     }
 
     public String issueToken(AuthContext ctx) {
-        return JwtUtil.create(appProperties.getJwtSecret(), ctx.userId(), ctx.username(), ctx.roles(),
-                appProperties.getJwtTtlSeconds() * 1000);
+        return sessions.create(ctx.userId());
     }
 
     @Override
